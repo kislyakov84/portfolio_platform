@@ -1,0 +1,20 @@
+Django
+djangorestframework
+psycopg2-binary  # Для PostgreSQL
+djangorestframework-simplejwt # Для JWT аутентификации
+django-taggit # Для тегов
+django-storages # Для S3/MinIO
+boto3 # AWS SDK, нужен для django-storages S3
+Pillow # Для ImageField
+gunicorn # WSGI сервер для продакшена
+python-dotenv # Для управления переменными окружения
+django-filter
+
+# Для разработки и тестирования
+flake8
+black
+pytest
+pytest-django
+pytest-cov
+drf-yasg # Или drf-spectacular для OpenAPI схемы (опционально для документации API)
+# selenium / playwright (если E2E тесты будут в этом же репозитории) .venv
