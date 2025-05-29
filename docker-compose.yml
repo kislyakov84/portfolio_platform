@@ -11,35 +11,38 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-portfolio_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-strongpassword}
     ports:
-      - "5433:5432" # Внешний порт 5433, чтобы не конфликтовать с локальным Postgres
+      - "5433:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-portfolio_user} -d ${POSTGRES_DB:-portfolio_db}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-portfolio_user}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   web:
-    build: .
+    build: 
+      context: .
+      dockerfile: Dockerfile  # Явное указание Dockerfile
     container_name: portfolio_django_app
     command: >
       sh -c "python manage.py migrate &&
              python manage.py runserver 0.0.0.0:8000"
     volumes:
-      - .:/app # Синхронизация кода с хостом
-      - ./mediafiles:/app/mediafiles # Для хранения загруженных файлов локально
-      # staticfiles можно монтировать, если collectstatic выполняется на хосте
-      # или использовать общий volume, если collectstatic внутри контейнера
+      - .:/app
+      - static_volume:/app/staticfiles  # Выделенный volume для статики
+      - media_volume:/app/mediafiles     # Выделенный volume для медиа
     ports:
       - "8000:8000"
     env_file:
-      - .env # Используем переменные из .env файла
+      - .env
     environment:
-      # Переопределяем хост для БД, так как web сервис видит db сервис по имени
       - POSTGRES_HOST=db
       - DJANGO_SETTINGS_MODULE=portfolio_platform.settings
       - PYTHONUNBUFFERED=1
     depends_on:
       db:
-        condition: service_healthy # Запускать web только после того, как db будет готова
+        condition: service_healthy
+
 volumes:
   postgres_data:
+  static_volume:  # Выделенные volumes
+  media_volume:

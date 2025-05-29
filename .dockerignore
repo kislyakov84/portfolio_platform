@@ -1,14 +1,15 @@
+.venv/
+.git/
+.gitignore
+Dockerfile
+docker-compose.yml
+*.md
+*.sqlite3
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.Python
-env/
-venv/
-.git/
-.idea/
+.vscode/
 staticfiles/
-mediafiles/ # Если не хотите включать локальные медиа в образ
-db_data/ # Для локальной базы данных PostgreSQL
-*.sqlite3
+mediafiles/
 .env
