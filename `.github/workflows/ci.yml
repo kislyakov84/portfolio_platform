@@ -1,0 +1,80 @@
+name: Django CI
+
+on:
+  push:
+    branches: [ "main", "develop" ] # или на какие ветки настроите
+  pull_request:
+    branches: [ "main", "develop" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 4
+      matrix:
+        python-version: [3.9, '3.10'] # Можно тестировать на разных версиях
+
+    services: # Запуск PostgreSQL для тестов
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: test_db
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432 # Контейнер GitHub Actions сможет подключиться к localhost:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        # Дополнительные зависимости для CI, если нужны (например, pytest-cov)
+        pip install flake8 pytest pytest-django pytest-cov
+
+    - name: Lint with Flake8
+      run: |
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    - name: Run Tests with Pytest
+      env: # Переменные окружения для тестовой БД
+        DJANGO_SECRET_KEY: 'test-secret-key' # Не важно какой для тестов
+        DJANGO_DEBUG: 'False'
+        POSTGRES_DB: test_db
+        POSTGRES_USER: test_user
+        POSTGRES_PASSWORD: test_password
+        POSTGRES_HOST: localhost # Сервис postgres доступен по localhost в GitHub Actions
+        POSTGRES_PORT: 5432
+        # DEFAULT_FILE_STORAGE: 'django.core.files.storage.FileSystemStorage' # Убедитесь, что тесты не зависят от S3
+      run: |
+        python manage.py makemigrations --check --dry-run # Проверить, что все миграции созданы
+        python manage.py migrate
+        pytest --cov=. --cov-report=xml # Генерация отчета о покрытии
+
+    # Опциональный шаг: Сборка Docker-образа (если нужен деплой)
+    # - name: Build Docker image
+    #   if: github.ref == 'refs/heads/main' && github.event_name == 'push' # Только для main ветки при push
+    #   run: |
+    #     docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }} # если приватный репозиторий Docker Hub
+    #     docker build -t your_dockerhub_username/portfolio-platform:${{ github.sha }} .
+    #     docker push your_dockerhub_username/portfolio-platform:${{ github.sha }}
+
+    # Опциональный шаг: Деплой (зависит от платформы)
+    # - name: Deploy to Render/Heroku/etc.
+    #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    #   run: |
+    #     # Команды для деплоя, например, с использованием CLI платформы
+    #     echo "Deploying version ${{ github.sha }}"
