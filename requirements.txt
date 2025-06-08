@@ -1,5 +1,6 @@
 Django
 djangorestframework
+djangorestframework-stubs
 psycopg2-binary  # Для PostgreSQL
 djangorestframework-simplejwt # Для JWT аутентификации
 django-taggit # Для тегов
