@@ -98,20 +98,18 @@ class ProjectAPITests(APITestCase):
         self.assertEqual(Comment.objects.get().author, self.user1)
 
     def test_like_unlike_project_toggle(self):
-        """Проверка лайка и анлайка проекта по логике 'toggle'."""
+        """Проверка лайка и анлайка проекта по новой логике 'toggle'."""
         url = reverse("project-like", kwargs={"slug": self.project1.slug})
 
-        self.client.login(username="user2", password="password123")
-
-        # Ставим лайк
+        # 1. Ставим лайк
         response = self.client.post(url, format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        # Теперь Pylance не ругается на эту строку!
-        self.assertEqual(self.project1.likes.count(), 1)
+        self.assertEqual(Like.objects.count(), 1)
         self.assertEqual(response.data["status"], "liked")
 
-        # Убираем лайк (тем же запросом)
+        # 2. Убираем лайк (тем же запросом)
         response = self.client.post(url, format="json")
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        # И на эту тоже.
-        self.assertEqual(self.project1.likes.count(), 0)
+        self.assertEqual(Like.objects.count(), 0)
+
+        # Удаляем старые тесты test_like_project и test_unlike_project, так как этот их заменяет.
