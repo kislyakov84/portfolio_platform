@@ -1,9 +1,9 @@
 from django.db import models
 from django.conf import settings
-from taggit.managers import TaggableManager  # Для поля tags
+from taggit.managers import TaggableManager
 
-# Импортируем RelatedManager для типизации обратных связей
-from django.db.models.manager import RelatedManager
+# ИМПОРТ ИЗ ПРЕИСПОДНЕЙ. Оказывается, для stubs его нужно брать отсюда.
+from django.db.models import RelatedManager
 
 
 def project_image_upload_path(instance, filename):
@@ -37,32 +37,33 @@ class Project(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="projects"
     )
     title = models.CharField(max_length=200)
-    slug = models.SlugField(
-        max_length=220, unique=True, blank=True
-    )  # Будет генерироваться из title
+    slug = models.SlugField(max_length=220, unique=True, blank=True)
     description = models.TextField()
-    # Скриншот или лого проекта (главное изображение)
     main_image = models.ImageField(
-        upload_to=project_image_upload_path, null=True, blank=True
+        upload_to="projects.models.project_image_upload_path",
+        null=True,
+        blank=True,  # Исправляем путь, чтобы он был строкой
     )
-    project_url = models.URLField(blank=True, null=True)  # Ссылка на живой проект
-    repository_url = models.URLField(blank=True, null=True)  # Ссылка на репозиторий
+    project_url = models.URLField(blank=True, null=True)
+    repository_url = models.URLField(blank=True, null=True)
 
     technologies = models.ManyToManyField(
         Technology, related_name="projects", blank=True
     )
-    tags = TaggableManager(blank=True)  # Используем django-taggit
+    tags = TaggableManager(blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    # Эта типизация теперь должна работать корректно
+    likes: "RelatedManager[Like]"
+    comments: "RelatedManager[Comment]"
 
     def save(self, *args, **kwargs):
         if not self.slug:
             from django.utils.text import slugify
 
-            # Базовая генерация слага, можно добавить уникальность, если нужно
             self.slug = slugify(self.title)
-            # Проверка на уникальность и добавление суффикса если уже существует
             original_slug = self.slug
             queryset = Project.objects.filter(slug__iexact=original_slug).exclude(
                 pk=self.pk
@@ -76,21 +77,11 @@ class Project(models.Model):
                 counter += 1
         super().save(*args, **kwargs)
 
-        # Явно объявляем менеджер обратной связи для статического анализатора
-
-    # Это не влияет на базу данных, это только для типизации.
-    likes: RelatedManager
-    comments: RelatedManager  # Сразу сделаем и для комментов, на будущее
-
+    # Оставляем только один метод __str__
     def __str__(self):
         return self.title
 
-    class Meta:
-        ordering = ["-created_at"]
-
-    def __str__(self):
-        return self.title
-
+    # И один класс Meta
     class Meta:
         ordering = ["-created_at"]
 
