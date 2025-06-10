@@ -1,17 +1,16 @@
-from django.db import models
+from django.db import models  # models.Manager будет доступен через models
 from django.conf import settings
 from taggit.managers import TaggableManager
-
-# ИМПОРТ ИЗ ПРЕИСПОДНЕЙ. Оказывается, для stubs его нужно брать отсюда.
-from django.db.models import RelatedManager
+from django.utils.text import slugify
 
 
-def project_image_upload_path(instance, filename):
-    return f"projects/{instance.slug}/images/{filename}"
+def project_main_image_upload_path(instance, filename):  # Переименовал для ясности
+    return f"projects/{instance.slug}/images/main/{filename}"  # Добавил /main/ для основного
 
 
-def project_video_upload_path(instance, filename):
-    return f"projects/{instance.slug}/videos/{filename}"
+def project_media_upload_path(instance, filename):
+    # instance здесь это ProjectMedia, поэтому instance.project.slug
+    return f"projects/{instance.project.slug}/media/{instance.file_type}/{filename}"
 
 
 class Technology(models.Model):
@@ -20,10 +19,11 @@ class Technology(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.slug:
-            from django.utils.text import slugify
-
             self.slug = slugify(self.name)
-        super().save(*args, **kwargs)
+        # Убедимся, что даже если slug задан, он корректен (на случай прямого присвоения)
+        # В данном случае, если задан, то доверяем. Если нет, то генерируем.
+        # Для уникальности при генерации, если потребуется, можно добавить логику как в Project.
+        super().save(*args, **kwargs)  # Вызываем super() один раз в конце
 
     def __str__(self):
         return self.name
@@ -40,9 +40,9 @@ class Project(models.Model):
     slug = models.SlugField(max_length=220, unique=True, blank=True)
     description = models.TextField()
     main_image = models.ImageField(
-        upload_to="projects.models.project_image_upload_path",
+        upload_to=project_main_image_upload_path,  # Используем новую функцию
         null=True,
-        blank=True,  # Исправляем путь, чтобы он был строкой
+        blank=True,
     )
     project_url = models.URLField(blank=True, null=True)
     repository_url = models.URLField(blank=True, null=True)
@@ -55,57 +55,67 @@ class Project(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    # Эта типизация теперь должна работать корректно
-    likes: "RelatedManager[Like]"
-    comments: "RelatedManager[Comment]"
+    likes: "models.Manager[Like]"
+    comments: "models.Manager[Comment]"
+    media_files: "models.Manager[ProjectMedia]"
 
     def save(self, *args, **kwargs):
-        if not self.slug:
-            from django.utils.text import slugify
+        if not self.slug:  # Генерируем слаг только если он не предоставлен
+            base_slug = slugify(self.title)
+            # Если слаг пустой после slugify (например, название было "---"), генерируем что-то
+            if not base_slug:
+                import uuid
 
-            self.slug = slugify(self.title)
-            original_slug = self.slug
-            queryset = Project.objects.filter(slug__iexact=original_slug).exclude(
-                pk=self.pk
-            )
+                base_slug = str(uuid.uuid4())[:8]  # Короткий UUID как крайний случай
+
+            slug_candidate = base_slug
             counter = 1
-            while queryset.exists():
-                self.slug = f"{original_slug}-{counter}"
-                queryset = Project.objects.filter(slug__iexact=self.slug).exclude(
-                    pk=self.pk
-                )
+            # Проверяем существование слагов, исключая текущий объект, если он уже сохранен (при обновлении)
+            qs_filter = {"slug__iexact": slug_candidate}
+            # Используем self._state.adding чтобы понять, создается ли новый объект
+            if not self._state.adding and self.pk is not None:
+                qs = Project.objects.filter(**qs_filter).exclude(pk=self.pk)
+            else:
+                qs = Project.objects.filter(**qs_filter)
+
+            while qs.exists():
+                slug_candidate = f"{base_slug}-{counter}"
                 counter += 1
+                # Обновляем фильтр для следующей итерации
+                qs_filter["slug__iexact"] = slug_candidate
+                if not self._state.adding and self.pk is not None:
+                    qs = Project.objects.filter(**qs_filter).exclude(pk=self.pk)
+                else:
+                    qs = Project.objects.filter(**qs_filter)
+            self.slug = slug_candidate
         super().save(*args, **kwargs)
 
-    # Оставляем только один метод __str__
     def __str__(self):
         return self.title
 
-    # И один класс Meta
     class Meta:
         ordering = ["-created_at"]
 
 
-# Пример для других медиафайлов проекта (если надо несколько изображений/видео на проект)
 class ProjectMedia(models.Model):
     FILE_TYPES = [
         ("image", "Image"),
         ("video", "Video"),
-        ("archive", "Archive"),  # e.g. zip, rar
+        ("archive", "Archive"),
         ("other", "Other"),
     ]
     project = models.ForeignKey(
         Project, related_name="media_files", on_delete=models.CASCADE
     )
     file = models.FileField(
-        upload_to="projects/media_files/"
-    )  # Путь можно детализировать
+        upload_to=project_media_upload_path  # Используем новую функцию
+    )
     file_type = models.CharField(max_length=10, choices=FILE_TYPES, default="image")
     caption = models.CharField(max_length=255, blank=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.file_type} for {self.project.title}"
+        return f"{self.caption or self.file_type} for {self.project.title}"
 
 
 class Comment(models.Model):
@@ -134,10 +144,7 @@ class Like(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = (
-            "project",
-            "user",
-        )  # Пользователь может лайкнуть проект только один раз
+        unique_together = ("project", "user")
         ordering = ["-created_at"]
 
     def __str__(self):
